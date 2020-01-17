@@ -1,76 +1,91 @@
+#include <iostream>
 #include <opencv2/opencv.hpp>
-#include <string>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
-std::string print_color_background(std::string text, unsigned char r, unsigned char g, unsigned char b){
-    std::string str;
-    str = "\e[48;2;" + std::to_string(r);
-    str += ";";
-    str += std::to_string(g);
-    str += ";";
-    str += std::to_string(b);
-    str += "m";
-    str += text;
-    str += "\e[0m";
-    return str;
-}
+using namespace std;
+using namespace cv;
 
-std::string print_color_dot(std::string text, unsigned char rc, unsigned char gc, unsigned char bc, unsigned char r, unsigned char g, unsigned char b){
-    std::string str;
-    str = "\e[38;2;" + std::to_string(rc);
-    str += ";";
-    str += std::to_string(gc);
-    str += ";";
-    str += std::to_string(bc);
-    str += "m";
-    str += print_color_background(text, r, g, b);
-    return str;
-}
+class PiConsole{
+    public:
+        Mat img;
+        int row;
+        int col;
 
-void putcc(unsigned r, unsigned g, unsigned b){
-    std::cout << print_color_background(" ", r, g, b); 
-}
-
-void putcd(unsigned rc, unsigned gc, unsigned bc, unsigned r, unsigned g, unsigned b){
-    std::cout << print_color_dot("▀", rc, gc, bc, r, g, b); 
-}
-
-int main(int argc, char *argv[]){
-    cv::Mat img;
-    img = cv::imread(argv[1], 1);
-    
-    double sum[3];
-    double sum1[3];
-    for(int y=0; y<23; y++){
-        for(int x=0; x<80; x++){
-            sum[0] = 0;
-            sum[1] = 0;
-            sum[2] = 0;
-            sum1[0] = 0;
-            sum1[1] = 0;
-            sum1[2] = 0;
-            for(int i=0; i<9; i++){
-                for(int j=0; j<9; j++){
-                    sum[0] += img.at<cv::Vec3b>(i+y*18, j+x*9)[0];
-                    sum[1] += img.at<cv::Vec3b>(i+y*18, j+x*9)[1];
-                    sum[2] += img.at<cv::Vec3b>(i+y*18, j+x*9)[2];
-                }
-            }
-            for(int i=0; i<9; i++){
-                for(int j=0; j<9; j++){
-                    sum1[0] += img.at<cv::Vec3b>(i+y*18+9, j+x*9)[0];
-                    sum1[1] += img.at<cv::Vec3b>(i+y*18+9, j+x*9)[1];
-                    sum1[2] += img.at<cv::Vec3b>(i+y*18+9, j+x*9)[2];
-                }
-            }
-            sum[0] /= 81;
-            sum[1] /= 81;
-            sum[2] /= 81;
-            sum1[0] /= 81;
-            sum1[1] /= 81;
-            sum1[2] /= 81;
-            putcd((unsigned char)sum[2], (unsigned char)sum[1], (unsigned char)sum[0], (unsigned char)sum1[2], (unsigned char)sum1[1], (unsigned char)sum1[0]);
+        string color_bg(string text, Vec3b bgr){
+            return "\e[48;2;"
+                + to_string(bgr[2])
+                + ";"
+                + to_string(bgr[1])
+                + ";"
+                + to_string(bgr[0])
+                + "m"
+                + text
+                + "\e[0m";
         }
-    }
-    
+
+        string color_dot(string text, Vec3b bgr1, Vec3b bgr2){
+            return "\e[38;2;"
+                + to_string(bgr1[2])
+                + ";"
+                + to_string(bgr1[1])
+                + ";"
+                + to_string(bgr1[0])
+                + "m"
+                + color_bg(text, bgr2);
+        }
+
+        void putcc(Vec3b bgr){
+            cout << color_bg(" ", bgr) << ends; 
+        }
+
+        void putcd(Vec3b bgr1, Vec3b bgr2){
+            cout << color_dot("▀", bgr1, bgr2) << ends; 
+        }
+
+        void resize(){
+            cv::resize(img, img, Size(col * 9, row * 18));
+        }
+
+        void print(){
+            Vec3d bgr1, bgr2;
+            for(int y = 0; y < row-1; y++){
+                for(int x = 0; x < col; x++){
+                    bgr1 = Vec3b(0, 0, 0);
+                    bgr2 = Vec3b(0, 0, 0);
+                    for(int i=0; i<9; i++){
+                        for(int j=0; j<9; j++){
+                            bgr1 += img.at<Vec3b>(i+y*18, j+x*9);
+                        }
+                    }
+                    for(int i=0; i<9; i++){
+                        for(int j=0; j<9; j++){
+                            bgr2 += img.at<Vec3b>(i+y*18+9, j+x*9);
+                        }
+                    }
+                    bgr1 /= 81;
+                    bgr2 /= 81;
+                    putcd((Vec3b)bgr1, (Vec3b)bgr2);
+                }
+                cout << "\n" << ends;
+            }
+        }
+
+
+};
+
+int main(int argc, char* argv[]){
+    if(argc != 2) exit(EXIT_FAILURE);
+
+    PiConsole piconsole;
+    struct winsize ws;
+
+    piconsole.img = imread(argv[1], 1);
+    ioctl( STDOUT_FILENO, TIOCGWINSZ, &ws );
+    piconsole.row = ws.ws_row;
+    piconsole.col = ws.ws_col;
+    piconsole.resize();
+    piconsole.print();
+
     return 0;
 }
